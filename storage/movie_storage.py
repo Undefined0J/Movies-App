@@ -4,7 +4,7 @@ Module for handling persistent storage of movie data in a JSON file.
 
 import json
 
-FILE_PATH = "data.json"
+FILE_PATH = "../data/data.json"
 
 
 def get_movies():
