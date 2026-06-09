@@ -1,40 +1,34 @@
 """
 A modular command-line interface (CLI) application for movie management.
-Uses persistent storage via the movie_storage module.
+Uses persistent SQL storage via the movie_storage_sql module.
 """
 
 import random
 import statistics
-from storage import movie_storage
+from typing import List, Tuple, Optional, Dict, Union
+
+from storage import movie_storage_sql as storage
 
 
 # --- HELPER FUNCTIONS (INTERNAL) ---
 
-def _pause():
+def _pause() -> None:
     """
-    Pause execution and prompt the user to return to the main menu.
-
-    Returns:
-        None
+    Pauses execution and prompts the user to return to the main menu.
     """
     input("\nPress ENTER to return to main menu... ")
 
 
-def _get_rating(prompt_text, allow_empty=False):
+def _get_rating(prompt_text: str, allow_empty: bool = False) -> Optional[float]:
     """
-    Loop until a valid float rating between 0 and 10 is entered.
+    Loops until a valid float rating between 0 and 10 is entered.
     Optionally allows the user to leave the input blank.
 
-    Args:
-        prompt_text (str): The text displayed to request user input.
-        allow_empty (bool): If True, pressing Enter returns None.
-
-    Returns:
-        float or None: A validated rating (0.0 to 10.0), or None if left blank.
+    :param prompt_text: The text displayed to request user input.
+    :param allow_empty: If True, pressing Enter returns None.
+    :return: A validated rating (0.0 to 10.0), or None if left blank.
     """
     while True:
-
-        # Normalize comma to dot to support European decimal formatting
         user_input = input(prompt_text).strip().replace(",", ".")
 
         if allow_empty and not user_input:
@@ -51,17 +45,14 @@ def _get_rating(prompt_text, allow_empty=False):
             print(msg)
 
 
-def _get_year(prompt_text, allow_empty=False):
+def _get_year(prompt_text: str, allow_empty: bool = False) -> Optional[int]:
     """
-    Loop until a valid integer year is entered.
+    Loops until a valid integer year is entered.
     Optionally allows the user to leave the input blank.
 
-    Args:
-        prompt_text (str): The text displayed to request user input.
-        allow_empty (bool): If True, pressing Enter returns None.
-
-    Returns:
-        int or None: A validated year (1800 to 2100), or None if left blank.
+    :param prompt_text: The text displayed to request user input.
+    :param allow_empty: If True, pressing Enter returns None.
+    :return: A validated year (1800 to 2100), or None if left blank.
     """
     while True:
         user_input = input(prompt_text).strip()
@@ -71,8 +62,6 @@ def _get_year(prompt_text, allow_empty=False):
 
         try:
             year = int(user_input)
-
-            # Enforce reasonable historical/future bounds for movie releases
             if 1800 <= year <= 2100:
                 return year
             print("Error: Year must be between 1800 and 2100.")
@@ -82,30 +71,24 @@ def _get_year(prompt_text, allow_empty=False):
             print(msg)
 
 
-def _get_matched_movies(movies, query):
+def _get_matched_movies(movies: Dict[str, Dict[str, Union[int, float]]], query: str) -> List[str]:
     """
-    Filter movies by a title substring (case-insensitive).
+    Filters movies by a title substring (case-insensitive).
 
-    Args:
-        movies (dict): The dictionary containing movie data.
-        query (str): The search string provided by the user.
-
-    Returns:
-        list: A list of movie titles that match the search query.
+    :param movies: The dictionary containing movie data.
+    :param query: The search string provided by the user.
+    :return: A list of movie titles that match the search query.
     """
     return [title for title in movies if query in title.lower()]
 
 
-def _select_from_list(matches, action_verb):
+def _select_from_list(matches: List[str], action_verb: str) -> Optional[str]:
     """
-    Display a numbered list and return the user's valid selection.
+    Displays a numbered list and returns the user's valid selection.
 
-    Args:
-        matches (list): A list of movie titles to display.
-        action_verb (str): The action context (e.g., 'delete', 'update').
-
-    Returns:
-        str or None: The selected movie title, or None if canceled.
+    :param matches: A list of movie titles to display.
+    :param action_verb: The action context (e.g., 'delete', 'update').
+    :return: The selected movie title, or None if canceled.
     """
     print("\nMatches found:")
     for index, title in enumerate(matches, 1):
@@ -113,111 +96,96 @@ def _select_from_list(matches, action_verb):
 
     while True:
         choice_str = input(
-            f"\nTo continue, to {action_verb} a movie, enter the number to make a selection (0 to cancel): "
+            f"\nTo {action_verb} a movie, enter the number to make a selection (0 to cancel): "
         ).strip()
+
         if choice_str.isdigit():
             choice = int(choice_str)
             if choice == 0:
                 print("Action canceled.")
                 return None
 
-            # Map the 1-based user input back to the 0-based list index
             if 1 <= choice <= len(matches):
                 return matches[choice - 1]
         print("Error: Invalid input. Please enter a valid number from the list.")
 
 
-def _select_movie(movies, action_verb):
+def _select_movie(
+        movies: Dict[str, Dict[str, Union[int, float]]],
+        action_verb: str) -> Optional[str]:
     """
-    Prompt for a query, find matches, and delegate to list selection.
+    Prompts for a query, finds matches, and delegates to list selection.
 
-    Args:
-        movies (dict): The dictionary containing movie data.
-        action_verb (str): The action context (e.g., 'delete', 'update').
-
-    Returns:
-        str or None: The selected movie title, or None if no match/canceled.
+    :param movies: The dictionary containing movie data.
+    :param action_verb: The action context (e.g., 'delete', 'update').
+    :return: The selected movie title, or None if no match/canceled.
     """
-    query = input(f"To {action_verb} a movie, enter a title to start the search (or part of it): ").strip().lower()
+    query = input(f"To {action_verb} a movie, "
+                  f"enter a title to start the search "
+                  f"(or part of it): ").strip().lower()
     matches = _get_matched_movies(movies, query)
+
     if not matches:
         print(f"No movie found matching '{query}'.")
         return None
     return _select_from_list(matches, action_verb)
 
 
-def _execute_delete(title):
+def _execute_delete(title: str) -> None:
     """
-    Handle the confirmation loop to safely delete a movie.
+    Handles the confirmation loop to safely delete a movie.
 
-    Args:
-        title (str): The title of the movie to delete.
-
-    Returns:
-        None
+    :param title: The title of the movie to delete.
     """
     while True:
         confirm = input(f"Delete '{title}'? (y/n): ").strip().lower()
         if confirm == "y":
-
-            # Utilizing the boolean return from storage for direct feedback
-            if movie_storage.delete_movie(title):
-                print(f"Success: '{title}' deleted.")
-            else:
-                print(f"Error: Could not delete '{title}'.")
+            storage.delete_movie(title)
             break
-        elif confirm == "n":
+        if confirm == "n":
             print("Deletion canceled.")
             break
         print("Error: Please enter 'y' or 'n'.")
 
 
-def _get_extreme_stats_movies(movies, find_best=True):
+def _get_extreme_stats_movies(
+        movies: Dict[str, Dict[str, Union[int, float]]],
+        find_best: bool = True
+) -> List[Tuple[str, Dict[str, Union[int, float]]]]:
     """
-    Return a list of movies with the highest or lowest rating.
+    Returns a list of movies with the highest or lowest rating.
 
-    Args:
-        movies (dict): The dictionary containing movie data.
-        find_best (bool): If True, returns top-rated movies; else lowest-rated.
-
-    Returns:
-        list: A list of tuples containing (title, movie_data_dict).
+    :param movies: The dictionary containing movie data.
+    :param find_best: If True, returns top-rated movies; else lowest-rated.
+    :return: A list of tuples containing (title, movie_data_dict).
     """
     if not movies:
         return []
 
-    # Extract all ratings to determine the global minimum or maximum
-    ratings = [data["rating"] for data in movies.values()]
+    ratings = [float(data["rating"]) for data in movies.values()]
     target = max(ratings) if find_best else min(ratings)
     return [(title, data) for (title, data) in movies.items() if data["rating"] == target]
 
 
-def _handle_update_menu(current_title):
+def _handle_update_menu(current_title: str) -> None:
     """
-    Display a sub-menu to update a movie's attributes interactively.
+    Displays a sub-menu to update a movie's attributes interactively.
 
-    Args:
-        current_title (str): The current title of the movie being updated.
-
-    Returns:
-        None
+    :param current_title: The current title of the movie being updated.
     """
     while True:
-
-        # Fetch fresh data to ensure we are working with the latest state
-        movies = movie_storage.get_movies()
+        movies = storage.list_movies()
         if current_title not in movies:
             break
 
         current_data = movies[current_title]
         current_rating = current_data["rating"]
-
-        # Using .get() to prevent KeyError on legacy data missing the year
         current_year = current_data.get("year", "N/A")
 
-        print(f"\n--- Updating: '{current_title}' (Year: {current_year}, Rating: {current_rating}) ---")
+        print(f"\n--- Updating: '{current_title}' "
+              f"(Year: {current_year}, Rating: {current_rating}) ---")
         print("1. Update name")
-        print("2. Update year and rating")
+        print("2. Update rating")
         print("0. Return")
 
         choice = input("\nEnter choice (0-2): ").strip()
@@ -229,24 +197,17 @@ def _handle_update_menu(current_title):
             elif new_title.lower() == current_title.lower():
                 print("The name is identical. No changes made.")
             else:
-                # Add new entry first. If successful (no duplicate), remove old entry.
-                if movie_storage.add_movie(
-                    new_title, current_data["year"], current_data["rating"]
-                ):
-                    movie_storage.delete_movie(current_title)
-                    print(f"Success: Name updated to '{new_title}'.")
+                if new_title not in storage.list_movies():
+                    storage.add_movie(new_title, int(current_year), float(current_rating))
+                    storage.delete_movie(current_title)
                     current_title = new_title
                 else:
                     print(f"Error: A movie named '{new_title}' already exists.")
 
         elif choice == "2":
-            new_year = _get_year(f"Enter new year for '{current_title}': ")
             new_rating = _get_rating(f"Enter new rating for '{current_title}' (0-10): ")
-
-            if movie_storage.update_movie(current_title, new_year, new_rating):
-                print(f"Success: '{current_title}' updated.")
-            else:
-                print(f"Error: Failed to update '{current_title}'.")
+            if new_rating is not None:
+                storage.update_movie(current_title, float(new_rating))
 
         elif choice == "0":
             break
@@ -254,21 +215,16 @@ def _handle_update_menu(current_title):
             print("Error: Invalid choice. Please enter 0, 1, or 2.")
 
 
-def _handle_search_menu(query):
+def _handle_search_menu(query: str) -> None:
     """
-    Display a sub-menu for acting on search results.
+    Displays a sub-menu for acting on search results.
 
-    Args:
-        query (str): The search query used to find the initial matches.
-
-    Returns:
-        None
+    :param query: The search query used to find the initial matches.
     """
     while True:
-        movies = movie_storage.get_movies()
+        movies = storage.list_movies()
         matches = _get_matched_movies(movies, query)
 
-        # Break out if all previous matches have been deleted or renamed out of scope
         if not matches:
             print("\nNo (more) matches left for this search. Returning...")
             break
@@ -302,71 +258,56 @@ def _handle_search_menu(query):
 
 # --- CRUD OPERATIONS ---
 
-def list_movies():
+def list_movies() -> None:
     """
-    Fetch and display all movies in the database.
-
-    Returns:
-        None
+    Fetches and displays all movies in the database.
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     print(f"\n------ {len(movies)} movies in total ------")
     for title, data in movies.items():
         print(f"{title} ({data.get('year', 'N/A')}): {data['rating']}")
     _pause()
 
 
-def add_movie():
+def add_movie() -> None:
     """
-    Prompt the user for details and add a new movie to the database.
-    Includes input validation for title, year, and rating.
-
-    Returns:
-        None
+    Prompts the user for details and adds a new movie to the database.
     """
     while True:
         title = input("Enter new movie title (or 0 to cancel): ").strip()
         if title == '0':
             return
-
-        # Prevent completely empty inputs
         if not title:
             print("Error: Movie title cannot be empty.")
             continue
-
-        # Delegate existence checks entirely to the storage layer
         break
 
     year = _get_year("Enter release year: ")
+    if year is None:
+        return
+
     rating = _get_rating("Enter rating (0-10): ")
+    if rating is None:
+        return
 
-    if movie_storage.add_movie(title, year, rating):
-        print(f"Added '{title}' ({year}, Rating: {rating}).")
-    else:
-        print(f"Error: '{title}' already exists in the database or saving failed.")
+    storage.add_movie(title, int(year), float(rating))
 
 
-def delete_movie():
+def delete_movie() -> None:
     """
     Entry point to interactively select and delete a movie.
-
-    Returns:
-        None
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     movie = _select_movie(movies, "delete")
     if movie:
         _execute_delete(movie)
 
 
-def update_movie():
+def update_movie() -> None:
     """
     Entry point to interactively select and update a movie.
-
-    Returns:
-        None
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     movie = _select_movie(movies, "update")
     if movie:
         _handle_update_menu(movie)
@@ -374,20 +315,17 @@ def update_movie():
 
 # --- ANALYSIS & SEARCH ---
 
-def show_stats():
+def show_stats() -> None:
     """
-    Calculate and display mean, median, and extreme ratings.
-
-    Returns:
-        None
+    Calculates and displays mean, median, and extreme ratings.
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     if not movies:
         print("Database empty.")
         _pause()
         return
 
-    ratings = [data["rating"] for data in movies.values()]
+    ratings = [float(data["rating"]) for data in movies.values()]
     print(f"\nAverage: {round(statistics.mean(ratings), 1)}")
     print(f"Median:  {round(statistics.median(ratings), 1)}")
 
@@ -398,14 +336,11 @@ def show_stats():
     _pause()
 
 
-def random_movie():
+def random_movie() -> None:
     """
-    Select and display a random movie from the database.
-
-    Returns:
-        None
+    Selects and displays a random movie from the database.
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     if movies:
         title = random.choice(list(movies.keys()))
         data = movies[title]
@@ -415,16 +350,12 @@ def random_movie():
     _pause()
 
 
-def search_movie():
+def search_movie() -> None:
     """
-    Prompt the user to search for a movie. Includes a retry loop
-    and delegates to a sub-menu if matches are found.
-
-    Returns:
-        None
+    Prompts the user to search for a movie. Includes a retry loop.
     """
     while True:
-        movies = movie_storage.get_movies()
+        movies = storage.list_movies()
         query = input("Search for: ").strip().lower()
         matches = _get_matched_movies(movies, query)
 
@@ -442,17 +373,12 @@ def search_movie():
             break
 
 
-def sort_movies():
+def sort_movies() -> None:
     """
-    Fetch and display all movies sorted by rating in descending order.
-
-    Returns:
-        None
+    Fetches and displays all movies sorted by rating in descending order.
     """
-    movies = movie_storage.get_movies()
-
-    # Sort tuples based on the 'rating' value nested within the movie's data dictionary
-    sorted_m = sorted(movies.items(), key=lambda item: item[1]["rating"], reverse=True)
+    movies = storage.list_movies()
+    sorted_m = sorted(movies.items(), key=lambda item: float(item[1]["rating"]), reverse=True)
 
     print("\nSorted by Rating:")
     for title, data in sorted_m:
@@ -460,14 +386,11 @@ def sort_movies():
     _pause()
 
 
-def sort_movies_by_year():
+def sort_movies_by_year() -> None:
     """
-    Fetch and display all movies sorted chronologically based on user preference.
-
-    Returns:
-        None
+    Fetches and displays all movies sorted chronologically.
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     if not movies:
         print("Database empty.")
         _pause()
@@ -479,11 +402,9 @@ def sort_movies_by_year():
             break
         print("Error: Please enter 'y' or 'n'.")
 
-    # Evaluate user preference to set the sort direction (True for descending)
-    reverse_order = (order == 'y')
-
-    # Use 0 as a safe fallback key if the 'year' attribute is missing in any record
-    sorted_m = sorted(movies.items(), key=lambda item: item[1].get("year", 0), reverse=reverse_order)
+    reverse_order = order == 'y'
+    sorted_m = sorted(movies.items(), key=lambda
+        item: int(item[1].get("year", 0)), reverse=reverse_order)
 
     print("\nSorted by Year:")
     for title, data in sorted_m:
@@ -491,39 +412,27 @@ def sort_movies_by_year():
     _pause()
 
 
-def filter_movies():
+def filter_movies() -> None:
     """
-    Filter movies based on user-defined minimum rating, start year, and end year.
-    Empty inputs are ignored during filtering.
-
-    Returns:
-        None
+    Filters movies based on minimum rating, start year, and end year.
     """
-    movies = movie_storage.get_movies()
+    movies = storage.list_movies()
     if not movies:
         print("Database empty.")
         _pause()
         return
 
-    min_rating = _get_rating(
-        "Enter minimum rating (leave blank for no minimum rating): ", allow_empty=True
-    )
-    start_year = _get_year(
-        "Enter start year (leave blank for no start year): ", allow_empty=True
-    )
-    end_year = _get_year(
-        "Enter end year (leave blank for no end year): ", allow_empty=True
-    )
+    min_rating = _get_rating("Enter minimum rating (leave blank to skip): ", allow_empty=True)
+    start_year = _get_year("Enter start year (leave blank to skip): ", allow_empty=True)
+    end_year = _get_year("Enter end year (leave blank to skip): ", allow_empty=True)
+
     print("\nFiltered Movies:")
     matches_found = False
 
     for title, data in movies.items():
+        rating = float(data.get("rating", 0.0))
+        year = int(data.get("year", 0))
 
-        # Define safe defaults for logic comparison if data points are missing
-        rating = data.get("rating", 0.0)
-        year = data.get("year", 0)
-
-        # 'is not None' ensures a legitimate 0.0 rating isn't skipped by truthy evaluation
         if min_rating is not None and rating < min_rating:
             continue
         if start_year is not None and year < start_year:
@@ -541,12 +450,9 @@ def filter_movies():
 
 # --- INTERFACE & CONTROL ---
 
-def print_menu():
+def print_menu() -> None:
     """
-    Display the main menu options to the console.
-
-    Returns:
-        None
+    Displays the main menu options to the console.
     """
     print("\n********** My Movies Database **********")
     print("Menu:")
@@ -558,15 +464,10 @@ def print_menu():
     print("9. Sort by year    10. Filter movies")
 
 
-def run_cli():
+def run_cli() -> None:
     """
     Primary CLI loop managing user interaction and routing.
-
-    Returns:
-        None
     """
-
-    # Dictionary dispatch pattern for cleaner routing than multiple if/else blocks
     actions = {
         "1": list_movies,
         "2": add_movie,
@@ -583,8 +484,6 @@ def run_cli():
     while True:
         print_menu()
 
-        # Inner loop to suppress empty inputs (e.g., buffered newlines from terminal)
-        # without repeatedly printing the full main menu.
         while True:
             choice = input("\nEnter choice (0-10): ").strip()
             if choice:
@@ -600,12 +499,9 @@ def run_cli():
             print("Invalid selection. Please try again.")
 
 
-def main():
+def main() -> None:
     """
     Application entry point.
-
-    Returns:
-        None
     """
     run_cli()
 
