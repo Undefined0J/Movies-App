@@ -5,7 +5,7 @@ Uses persistent storage via the movie_storage module.
 
 import random
 import statistics
-import movie_storage
+from storage import movie_storage
 
 
 # --- HELPER FUNCTIONS (INTERNAL) ---
