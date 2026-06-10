@@ -6,7 +6,7 @@ Uses persistent SQL storage via the movie_storage_sql module.
 import random
 import statistics
 from typing import List, Tuple, Optional, Dict, Union
-
+import api_fetcher
 from storage import movie_storage_sql as storage
 
 
@@ -274,23 +274,33 @@ def add_movie() -> None:
     Prompts the user for details and adds a new movie to the database.
     """
     while True:
-        title = input("Enter new movie title (or 0 to cancel): ").strip()
-        if title == '0':
+        title_query = input("Enter new movie title (or 0 to cancel): ").strip()
+        if title_query == '0':
             return
-        if not title:
+        if not title_query:
             print("Error: Movie title cannot be empty.")
             continue
         break
 
-    year = _get_year("Enter release year: ")
-    if year is None:
-        return
+    print(f"\nFetching data for '{title_query}' from OMDb API...")
 
-    rating = _get_rating("Enter rating (0-10): ")
-    if rating is None:
-        return
+    # Delegate the network request and data parsing to the API layer
+    movie_data = api_fetcher.fetch_movie_data(title_query)
 
-    storage.add_movie(title, int(year), float(rating))
+    if movie_data:
+        # Check if it already exists before trying to save
+        current_movies = storage.list_movies()
+        fetched_title = movie_data["title"]
+
+        if fetched_title in current_movies:
+            print(f"Notice: The movie '{fetched_title}' is already in your database.")
+        else:
+            storage.add_movie(
+                title=fetched_title,
+                year=movie_data["year"],
+                rating=movie_data["rating"],
+                poster_url=movie_data["poster_url"]
+            )
 
 
 def delete_movie() -> None:
