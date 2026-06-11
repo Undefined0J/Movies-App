@@ -11,3 +11,6 @@ __pycache__/
 
 # Environment Variables / Secrets
 .env
+
+# Generated build artifacts
+web/index.html
