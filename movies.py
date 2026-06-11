@@ -458,6 +458,54 @@ def filter_movies() -> None:
     _pause()
 
 
+def generate_website() -> None:
+    """
+    Generates an HTML website from the database using a template.
+    Replaces specific placeholders with dynamic movie data.
+    """
+    movies = storage.list_movies()
+    movie_grid_html = ""
+
+    for title, data in movies.items():
+        # Fallback image in case the API returned no poster
+        poster = data.get("poster_url", "")
+        if not poster:
+            poster = "https://via.placeholder.com/128x193.png?text=No+Poster"
+
+        year = data.get("year", "N/A")
+
+        # Build the HTML block for a single movie based on the CSS classes
+        movie_html = f"""
+        <li>
+            <div class="movie">
+                <img class="movie-poster" src="{poster}" alt="{title} Poster"/>
+                <div class="movie-title">{title}</div>
+                <div class="movie-year">{year}</div>
+            </div>
+        </li>"""
+        movie_grid_html += movie_html
+
+    # File I/O with defensive error handling
+    try:
+        with open("web/index_template.html", "r", encoding="utf-8") as file:
+            template = file.read()
+
+        # Replace the placeholders
+        output_html = template.replace("__TEMPLATE_TITLE__", "Jonny's Movie App")
+        output_html = output_html.replace("__TEMPLATE_MOVIE_GRID__", movie_grid_html)
+
+        with open("web/index.html", "w", encoding="utf-8") as file:
+            file.write(output_html)
+
+        print("Website was generated successfully.")
+    except FileNotFoundError:
+        print("Error: 'index_template.html' not found. Please ensure it is in the correct directory.")
+    except Exception as e:
+        print(f"Error generating website: {e}")
+
+    _pause()
+
+
 # --- INTERFACE & CONTROL ---
 
 def print_menu() -> None:
@@ -472,6 +520,7 @@ def print_menu() -> None:
     print("5. Movie stats      6. Random movie")
     print("7. Search movie     8. Sort by rating")
     print("9. Sort by year    10. Filter movies")
+    print("11. Generate website")
 
 
 def run_cli() -> None:
@@ -489,13 +538,14 @@ def run_cli() -> None:
         "8": sort_movies,
         "9": sort_movies_by_year,
         "10": filter_movies,
+        "11": generate_website,
     }
 
     while True:
         print_menu()
 
         while True:
-            choice = input("\nEnter choice (0-10): ").strip()
+            choice = input("\nEnter choice (0-11): ").strip()
             if choice:
                 break
 
